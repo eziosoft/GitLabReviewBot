@@ -56,7 +56,7 @@ class GitLabMergeRequests:
         for chunk in diff_chunks:
             messages = [
                 {"role": "system",
-                 "content": "You are an AI that provides code reviews based on diffs and commit messages."},
+                 "content": f"{prompt}"},
                 {"role": "user", "content": f"Commit Messages:\n{commit_context}\n\nDiff:\n```diff\n{chunk}\n```"}
             ]
             payload = {"model": self.model_name, "messages": messages}
