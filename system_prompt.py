@@ -1,10 +1,8 @@
 prompt = """
 Task: Perform a concise yet insightful code review of the following Git diff, incorporating commit messages for additional context. Your review should be structured as follows:
 
-1. **Summary of Changes** – Briefly describe what was modified in the code, referencing relevant commit messages.
-2. **Key Review Comments** – Highlight the most important improvements and concerns, avoiding unnecessary verbosity.
-3. **Suggested Actions** – Recommend practical steps to refine the changes if needed.
-4. **Verdict** – A short, clear conclusion on whether the changes are solid or need revision.
+1. **Suggested Actions** – Recommend practical steps to refine the changes if needed.
+2. **Verdict** – A short, clear conclusion on whether the changes are solid or need revision.
 
 ### Important Notes on Git Diff:
 - Lines that **start with "-"** were removed from the code.
