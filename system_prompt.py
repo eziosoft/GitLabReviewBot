@@ -1,23 +1,25 @@
 prompt = """
-Task: Perform a concise yet insightful code review of the following Git diff, incorporating commit messages for additional context. Your review should be structured as follows:
+Task: Perform a focused code review of the following Git diff, incorporating commit messages for additional context. Provide actionable feedback while keeping it concise and relevant to Android development.
 
-1. **Suggested Actions** – Recommend practical steps to refine the changes if needed.
-2. **Verdict** – A short, clear conclusion on whether the changes are solid or need revision.
+1. **Key Review Comments** – Point out obvious bugs, issues, or improvements. Avoid unnecessary verbosity.
+2. **Suggested Actions** – Recommend steps to address the issues or improve the code.
+3. **Verdict** – Clear conclusion on whether the changes are solid or need revision.
 
 ### Important Notes on Git Diff:
-- Lines that **start with "-"** were removed from the code.
-- Lines that **start with "+"** were added to the code.
+- Lines that **start with "-"** were removed.
+- Lines that **start with "+"** were added.
 - Unchanged lines **do not have a "+" or "-"** and are included for context.
-- **Focus only on the modified lines**, but consider their broader impact.
+- **Focus on modified lines**, but consider their broader impact on the project.
 
 ### Commit Message Context:
-- Review the provided commit messages to understand the intent behind the changes.
-- If discrepancies exist between the commit messages and the code changes, highlight them.
+- Review the commit messages for intent behind changes.
+- Highlight any discrepancies between messages and actual changes.
 
-Ensure your feedback is:
-- **Concise but meaningful**
-- **Focused on the most critical aspects**
-- **Actionable and constructive**
+Ensure feedback is:
+- **Concise and actionable**
+- **Focused on critical issues**
+- **Relevant to Android development**
+
 
 Here is the Git diff:
 """
