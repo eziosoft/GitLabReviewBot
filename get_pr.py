@@ -9,12 +9,6 @@ from system_prompt import prompt
 from cachetools import TTLCache
 from time import sleep
 
-# Load environment variables from .env file
-load_dotenv()
-
-# Cache for storing MR diffs (avoids redundant API calls)
-diff_cache = TTLCache(maxsize=100, ttl=300)  # Store up to 100 diffs, expire after 5 minutes
-
 
 class GitLabMergeRequests:
     def __init__(self, gitlab_url: str, access_token: str, project_id: str, llm_api_url: str, llm_api_key: str,
@@ -26,6 +20,8 @@ class GitLabMergeRequests:
         self.llm_api_url = llm_api_url
         self.llm_api_key = llm_api_key
         self.model_name = model_name
+        # Cache for storing MR diffs (avoids redundant API calls)
+        self.diff_cache = TTLCache(maxsize=100, ttl=300)  # Store up to 100 diffs, expire after 5 minutes
 
     def get_merge_requests(self, state: str = None, per_page: int = 20, page: int = 1):
         """Fetch a list of merge requests with optional state filtering."""
@@ -37,12 +33,12 @@ class GitLabMergeRequests:
 
     def get_merge_request_diff(self, merge_request_iid: int):
         """Fetch the diff of a specific merge request using its IID."""
-        if merge_request_iid in diff_cache:
-            return diff_cache[merge_request_iid]  # Return cached result
+        if merge_request_iid in self.diff_cache:
+            return self.diff_cache[merge_request_iid]  # Return cached result
 
         url = f"{self.gitlab_url}/api/v4/projects/{self.project_id}/merge_requests/{merge_request_iid}/changes"
         diff = self._make_request("GET", url).get("changes", [])
-        diff_cache[merge_request_iid] = diff  # Store in cache
+        self.diff_cache[merge_request_iid] = diff  # Store in cache
         return diff
 
     def send_diff_to_llm(self, diff: list, merge_request_iid: int):
@@ -50,20 +46,27 @@ class GitLabMergeRequests:
         commit_messages = self.get_merge_request_commits(merge_request_iid)
         commit_context = "\n".join(commit_messages)
 
-        diff_chunks = split_diff_by_files(diff)
+        diff_chunks = self.split_diff_by_files(diff)
 
         reviews = []
         for chunk in diff_chunks:
             messages = [
-                {"role": "system",
-                 "content": f"{prompt}"},
+                {"role": "system", "content": f"{prompt}"},
                 {"role": "user", "content": f"Commit Messages:\n{commit_context}\n\nDiff:\n```diff\n{chunk}\n```"}
             ]
             payload = {"model": self.model_name, "messages": messages}
             headers = {"Authorization": f"Bearer {self.llm_api_key}", "Content-Type": "application/json"}
 
+            print("\n[DEBUG] Sending to LLM:")
+            print(json.dumps(payload, indent=2))
+
             response = self._make_request("POST", self.llm_api_url, json=payload, headers=headers)
-            reviews.append(safe_extract_llm_response(response))
+            review = self.safe_extract_llm_response(response)
+
+            print("\n[DEBUG] LLM Response:")
+            print(review)
+
+            reviews.append(review)
 
         return "\n\n".join(reviews)
 
@@ -95,57 +98,54 @@ class GitLabMergeRequests:
 
         raise Exception("API request failed after retries.")
 
+    def split_diff_by_files(self, diff):
+        """Splits diff into separate file changes."""
+        file_diffs = []
+        current_diff = []
 
-def split_diff_by_files(diff):
-    """Splits diff into separate file changes."""
-    file_diffs = []
-    current_diff = []
+        for change in diff:
+            file_diffs.append(f"File: {change['new_path']}\n{change['diff']}")
 
-    for change in diff:
-        file_diffs.append(f"File: {change['new_path']}\n{change['diff']}")
+        return file_diffs
 
-    return file_diffs
+    def safe_extract_llm_response(self, response):
+        """Safely extracts and validates LLM response."""
+        try:
+            content = response.get('choices', [{}])[0].get('message', {}).get('content', "").strip()
+            return re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL) or "⚠️ No valid response received."
+        except Exception as e:
+            return f"⚠️ Error processing LLM response: {str(e)}"
 
+    def get_diff_hash(diff):
+        """Generate a hash of the diff for change tracking."""
+        return hashlib.sha256(diff.encode()).hexdigest()
 
-def safe_extract_llm_response(response):
-    """Safely extracts and validates LLM response."""
-    try:
-        content = response.get('choices', [{}])[0].get('message', {}).get('content', "").strip()
-        return re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL) or "⚠️ No valid response received."
-    except Exception as e:
-        return f"⚠️ Error processing LLM response: {str(e)}"
+    def was_diff_already_reviewed(self, diff):
+        """Check if this diff was already reviewed by comparing hashes."""
+        try:
+            with open(".ai_review_cache.json", "r") as f:
+                cache = json.load(f)
+                return self.get_diff_hash(diff) in cache
+        except FileNotFoundError:
+            return False
 
+    def store_reviewed_diff(self, diff):
+        """Store reviewed diff hashes to avoid duplicate reviews."""
+        hash_value = self.get_diff_hash(diff)
+        try:
+            with open(".ai_review_cache.json", "r") as f:
+                cache = json.load(f)
+        except FileNotFoundError:
+            cache = {}
 
-def get_diff_hash(diff):
-    """Generate a hash of the diff for change tracking."""
-    return hashlib.sha256(diff.encode()).hexdigest()
-
-
-def was_diff_already_reviewed(diff):
-    """Check if this diff was already reviewed by comparing hashes."""
-    try:
-        with open(".ai_review_cache.json", "r") as f:
-            cache = json.load(f)
-            return get_diff_hash(diff) in cache
-    except FileNotFoundError:
-        return False
-
-
-def store_reviewed_diff(diff):
-    """Store reviewed diff hashes to avoid duplicate reviews."""
-    hash_value = get_diff_hash(diff)
-    try:
-        with open(".ai_review_cache.json", "r") as f:
-            cache = json.load(f)
-    except FileNotFoundError:
-        cache = {}
-
-    cache[hash_value] = True
-    with open(".ai_review_cache.json", "w") as f:
-        json.dump(cache, f)
+        cache[hash_value] = True
+        with open(".ai_review_cache.json", "w") as f:
+            json.dump(cache, f)
 
 
 if __name__ == "__main__":
+    # Load environment variables from .env file
+    load_dotenv()
     GITLAB_URL = os.getenv("GITLAB_URL", "https://gitlab.com")
     ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
     PROJECT_ID = os.getenv("PROJECT_ID")
@@ -182,9 +182,9 @@ if __name__ == "__main__":
             print("Error: --mr-id is required for 'review-diff' command.")
         else:
             diff = gitlab_mr.get_merge_request_diff(args.mr_id)
-            review = gitlab_mr.send_diff_to_llm(diff, args.mr_id) if not was_diff_already_reviewed(
+            review = gitlab_mr.send_diff_to_llm(diff, args.mr_id) if not gitlab_mr.was_diff_already_reviewed(
                 diff) else "✅ Already reviewed."
-            store_reviewed_diff(diff)
+            gitlab_mr.store_reviewed_diff(diff)
             print(f"LLM Review for MR {args.mr_id}:\n" + review)
 
     elif args.command == "post-review":
@@ -194,4 +194,5 @@ if __name__ == "__main__":
             diff = gitlab_mr.get_merge_request_diff(args.mr_id)
             review = gitlab_mr.send_diff_to_llm(diff, args.mr_id)
             gitlab_mr.post_comment_to_gitlab(args.mr_id, review)
-            print(f"📌 Review posted to MR {args.mr_id}!")
+            print("------------------------------------")
+            print(f"\n\n\n\n📌 Review posted to MR {args.mr_id}!")

@@ -20,6 +20,6 @@ Ensure feedback is:
 - **Focused on critical issues**
 - **Relevant to Android development**
 
+Below is are the commit messages and the diff for the merge request:
 
-Here is the Git diff:
 """
