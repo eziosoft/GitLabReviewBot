@@ -116,7 +116,7 @@ class GitLabMergeRequests:
         except Exception as e:
             return f"⚠️ Error processing LLM response: {str(e)}"
 
-    def get_diff_hash(diff):
+    def get_diff_hash(self, diff):
         """Generate a hash of the diff for change tracking."""
         return hashlib.sha256(diff.encode()).hexdigest()
 
@@ -184,7 +184,7 @@ if __name__ == "__main__":
             diff = gitlab_mr.get_merge_request_diff(args.mr_id)
             review = gitlab_mr.send_diff_to_llm(diff, args.mr_id) if not gitlab_mr.was_diff_already_reviewed(
                 diff) else "✅ Already reviewed."
-            gitlab_mr.store_reviewed_diff(diff)
+            # gitlab_mr.store_reviewed_diff(diff)
             print(f"LLM Review for MR {args.mr_id}:\n" + review)
 
     elif args.command == "post-review":
