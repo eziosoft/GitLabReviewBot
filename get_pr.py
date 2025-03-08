@@ -118,7 +118,8 @@ class GitLabMergeRequests:
 
     def get_diff_hash(self, diff):
         """Generate a hash of the diff for change tracking."""
-        return hashlib.sha256(diff.encode()).hexdigest()
+        diff_string = json.dumps(diff, sort_keys=True)  # Convert list to a sorted JSON string
+        return hashlib.sha256(diff_string.encode()).hexdigest()
 
     def was_diff_already_reviewed(self, diff):
         """Check if this diff was already reviewed by comparing hashes."""
